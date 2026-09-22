@@ -8,15 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Extract project
-        run: |
-          unzip -o fragment_username_scanner.zip -d project
+        run: unzip -o fragment_username_scanner.zip -d project
 
       - name: Install dependencies
         working-directory: project
@@ -26,5 +27,5 @@ jobs:
         working-directory: project
         env:
           FRAGMENT_SCANNER_BOT_TOKEN: ${{ secrets.FRAGMENT_SCANNER_BOT_TOKEN }}
-          FRAGMENT_SCANNER_CHAT_ID: ${{ secrets.FRAGMENT_SCANNER_CHAT_ID }}
+          FRAGMENT_SCANNER_CHAT_ID: "@fragmentalerts2"
         run: python scripts/scan_and_notify.py
