@@ -1,6 +1,8 @@
-name: Start Scanner
+name: Fragment Scanner
 
 on:
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,29 +13,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract project
+        run: |
+          unzip -o fragment_username_scanner.zip -d project
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Extract project
-        run: |
-          unzip -o fragment_username_scanner.zip -d project
-          echo "Project contents:"
-          ls -la project
-          echo "Scanner folder:"
-          ls -la project/scanner
-
       - name: Install dependencies
-        working-directory: project
         run: |
-          pip install -r requirements-actions.txt
+          pip install -r project/requirements-actions.txt
 
       - name: Run scanner
-        working-directory: project
         env:
-          PYTHONPATH: ${{ github.workspace }}/project
           FRAGMENT_SCANNER_BOT_TOKEN: ${{ secrets.FRAGMENT_SCANNER_BOT_TOKEN }}
-          FRAGMENT_SCANNER_CHAT_ID: "@fragmentalerts2"
+          FRAGMENT_SCANNER_CHAT_ID: ${{ secrets.FRAGMENT_SCANNER_CHAT_ID }}
+        working-directory: project
         run: |
           python scripts/scan_and_notify.py
