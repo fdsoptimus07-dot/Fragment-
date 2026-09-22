@@ -1,118 +1,39 @@
-# ============================================================
-# Fragment Username Auction Scanner — configuration
-# ============================================================
+name: Start Scanner
 
-source:
-  # Which data source adapter to use. See scanner/sources/.
-  # "fragment_public_html" fetches Fragment's public, unauthenticated
-  # marketplace pages (fragment.com/usernames?...) — no login, no
-  # private endpoints, no captcha bypass. Swap in another adapter
-  # (e.g. a licensed data vendor) by changing this name only.
-  adapter: fragment_public_html
-  base_url: "https://fragment.com"
-  # Polite crawling settings — do not lower request_delay_seconds
-  # below ~2s. The scanner will back off further automatically on
-  # 429s or errors.
-  request_delay_seconds: 2.5
-  max_concurrent_requests: 2
-  request_timeout_seconds: 15
-  user_agent: "FragmentUsernameScanner/1.0 (+contact: set-your-contact-here)"
-  respect_robots_txt: true
-  max_pages_per_scan: 20          # safety cap per scan cycle
-  poll_interval_seconds: 120      # how often the background loop scans
+on:
+  workflow_dispatch:
 
-database:
-  path: "db/scanner.sqlite3"
+jobs:
+  run:
+    runs-on: ubuntu-latest
 
-dictionary:
-  sources:
-    - "data/wordlist_en.txt"          # large English wordlist (one word per line)
-    - "data/abbreviations.txt"        # common abbreviations / acronyms
-    - "data/slang_internet.txt"       # slang & internet terms
-    - "data/tech_terms.txt"           # tech / software terms
-    - "data/gaming_terms.txt"         # gaming terms
-    - "data/finance_crypto_terms.txt" # finance & crypto terminology
-    - "data/common_names.txt"         # common first names
-    - "data/geo_abbreviations.txt"    # country/city codes & abbreviations
-    - "data/brands_terms.txt"         # well-known brand-safe terms
-  reload_on_start: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-scoring:
-  # Length weighting — 3/4/5 chars weighted far above longer names,
-  # but a name is NEVER required to be short if it's a strong match.
-  length_weight:
-    3: 30
-    4: 24
-    5: 18
-    6: 10
-    7: 6
-    8: 4
-    "9+": 0     # no length bonus; must earn score entirely from meaning/brand
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-  weights:
-    dictionary_match: 28
-    semantic_meaning: 18     # boosted further by AI pass for borderline cases
-    pronounceability: 12
-    rarity: 8
-    pattern_quality: 10      # repeats, clean CV patterns, palindromes, etc.
-    brandability: 12
-    category_relevance: 12   # crypto/tech/gaming/finance bonus categories
+      - name: Extract project
+        run: |
+          unzip -o fragment_username_scanner.zip -d project
+          echo "Project contents:"
+          ls -la project
+          echo "Scanner folder:"
+          ls -la project/scanner
 
-  thresholds:
-    exceptional: 90
-    very_strong: 75
-    good: 60
-    interesting: 40
-    # below "interesting" = ignored entirely, never scored/stored beyond cache
+      - name: Install dependencies
+        working-directory: project
+        run: |
+          pip install -r requirements-actions.txt
 
-  max_length_considered: 32   # ignore absurdly long strings outright
-  penalize:
-    excessive_numbers: true
-    hard_to_pronounce: true
-    spammy_patterns: true
-    offensive_terms: true
-
-  category_priority:
-    # extra multiplier applied to category_relevance points
-    crypto: 1.3
-    tech: 1.2
-    gaming: 1.15
-    finance: 1.15
-    brand: 1.1
-    name: 1.0
-    generic_word: 1.0
-
-ai_analysis:
-  enabled: false   # disabled to run 100% free — deterministic scoring only.
-                    # Flip to true and set ANTHROPIC_API_KEY in .env if you
-                    # later want the paid AI semantic-check stage.
-  provider: "anthropic"
-  model: "claude-sonnet-4-6"
-  # Only usernames that already clear this deterministic score are
-  # sent to the AI for a semantic sanity check / short "why" blurb.
-  min_deterministic_score_for_ai: 55
-  max_candidates_per_cycle: 15
-  cache_ai_results: true
-
-notifications:
-  telegram:
-    enabled: true
-    # Bot token & chat id are read from environment variables, never
-    # stored in this file:
-    #   FRAGMENT_SCANNER_BOT_TOKEN
-    #   FRAGMENT_SCANNER_CHAT_ID
-    min_score_to_notify: 60
-    max_results_per_notification: 10
-    # "immediate" = notify as soon as a candidate clears the bar
-    # "batched"   = collect candidates and send in one message per interval
-    frequency: "batched"
-    batch_interval_seconds: 300
-    list_mode_threshold: 5   # if a batch has more than this many items, use compact list mode
-
-filters:
-  min_length: 3
-  max_length: 32
-  preferred_lengths: [3, 4, 5]
-  excluded_categories: []       # e.g. ["offensive"]
-  prioritized_keywords: []      # e.g. ["ton", "btc", "ai"]
-  
+      - name: Run scanner
+        working-directory: project
+        env:
+          PYTHONPATH: ${{ github.workspace }}/project
+          FRAGMENT_SCANNER_BOT_TOKEN: ${{ secrets.FRAGMENT_SCANNER_BOT_TOKEN }}
+          FRAGMENT_SCANNER_CHAT_ID: "@fragmentalerts2"
+        run: |
+          python scripts/scan_and_notify.py
