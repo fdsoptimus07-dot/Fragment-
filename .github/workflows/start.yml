@@ -5,9 +5,17 @@ on:
   schedule:
     - cron: "*/5 * * * *"
 
+permissions:
+  contents: write
+
+concurrency:
+  group: fragment-scanner
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -19,22 +27,60 @@ jobs:
           python-version: "3.12"
 
       - name: Extract project
+        shell: bash
         run: |
-          unzip -o fragment_username_scanner.zip -d project
-
-          echo "===== PROJECT ====="
-          find project -maxdepth 3 -type f | sort
+          rm -rf extracted
+          mkdir extracted
+          unzip -o fragment_username_scanner.zip -d extracted
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r project/requirements.txt
+          pip install -r extracted/requirements-actions.txt
+
+      - name: Restore scanner database
+        shell: bash
+        run: |
+          mkdir -p extracted/db
+
+          if [ -f db/scanner.sqlite3 ]; then
+            cp db/scanner.sqlite3 extracted/db/scanner.sqlite3
+            echo "Database restored."
+          else
+            echo "No previous database found. Starting fresh."
+          fi
 
       - name: Run scanner
         env:
           FRAGMENT_SCANNER_BOT_TOKEN: ${{ secrets.FRAGMENT_SCANNER_BOT_TOKEN }}
           FRAGMENT_SCANNER_CHAT_ID: ${{ secrets.FRAGMENT_SCANNER_CHAT_ID }}
-        working-directory: project
+        shell: bash
         run: |
-          export PYTHONPATH="$PWD"
-          python scripts/scan_and_notify.py
+          python extracted/scripts/scan_and_notify.py
+
+      - name: Save scanner database
+        shell: bash
+        run: |
+          mkdir -p db
+
+          if [ -f extracted/db/scanner.sqlite3 ]; then
+            cp extracted/db/scanner.sqlite3 db/scanner.sqlite3
+            echo "Database saved."
+          else
+            echo "Database not found!"
+            exit 1
+          fi
+
+      - name: Commit scanner state
+        shell: bash
+        run: |
+          git config user.name "fragment-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+          git add db/scanner.sqlite3
+
+          if git diff --cached --quiet; then
+            echo "No database changes."
+          else
+            git commit -m "chore: update scanner state [skip ci]"
+            git push
+          fi
