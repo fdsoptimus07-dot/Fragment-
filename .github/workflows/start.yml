@@ -1,0 +1,30 @@
+name: Start Scanner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract project
+        run: |
+          unzip -o fragment_username_scanner.zip -d project
+
+      - name: Install dependencies
+        working-directory: project
+        run: pip install -r requirements-actions.txt
+
+      - name: Run scanner
+        working-directory: project
+        env:
+          FRAGMENT_SCANNER_BOT_TOKEN: ${{ secrets.FRAGMENT_SCANNER_BOT_TOKEN }}
+          FRAGMENT_SCANNER_CHAT_ID: ${{ secrets.FRAGMENT_SCANNER_CHAT_ID }}
+        run: python scripts/scan_and_notify.py
